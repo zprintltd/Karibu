@@ -19,15 +19,15 @@ def load_wo_data():
         st.error(f"Error loading data: {e}")
         return pd.DataFrame()  # Return empty DataFrame on error
 
-# In your main app
-df = load_wo_data()
+    try:
+    df = load_wo_data()
 
     # --- SEARCH SECTION ---
     st.subheader("🔍 Search Work Order")
     search_query = st.text_input("Enter WO Number to Search", placeholder="e.g. 867")
 
     if search_query:
-        # Filter data by WO Number (handling it as a string to be safe)
+        # Filter data by WO Number
         match = df[df['WO Number'].astype(str) == str(search_query)]
 
         if not match.empty:
