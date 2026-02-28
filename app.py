@@ -3,140 +3,130 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime
 
-# Set page to wide mode for better visibility of the log
+# Set page to wide mode
 st.set_page_config(page_title="Work Order Manager", layout="wide")
 
 # 1. Establish Connection
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 2. Configuration - Replace with your actual full Google Sheet URL
-SHEET_URL = "https://docs.google.com/spreadsheets/d/14Ke6jLoN94HnwltRwCME-U0u5KK3adUZbBkXEL2LHxM/edit#gid=0"
+# 2. Pull URL from Secrets (Private)
+try:
+    SHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet_url"]
+except Exception:
+    st.error("Missing 'spreadsheet_url' in Streamlit Secrets!")
+    st.stop()
 
 def load_wo_data():
     """Load Work Order data from the WO_Log tab"""
-    data = conn.read(spreadsheet=https://docs.google.com/spreadsheets/d/14Ke6jLoN94HnwltRwCME-U0u5KK3adUZbBkXEL2LHxM/edit?gid=0#gid=0, worksheet="WO_Log", ttl=0)
-    # Clean column names of hidden spaces
+    data = conn.read(spreadsheet=SHEET_URL, worksheet="WO_Log", ttl=0)
     data.columns = [str(c).strip() for c in data.columns]
     return data
 
 def load_user_list():
     """Load staff names from the 'users' tab"""
     try:
-        user_data = conn.read(spreadsheet=https://docs.google.com/spreadsheets/d/14Ke6jLoN94HnwltRwCME-U0u5KK3adUZbBkXEL2LHxM/edit?gid=1731766061#gid=1731766061, worksheet="users", ttl=0)
+        user_data = conn.read(spreadsheet=SHEET_URL, worksheet="users", ttl=0)
         user_data.columns = [str(c).strip() for c in user_data.columns]
-        # Return unique names as a list
         return sorted(user_data['name'].dropna().unique().tolist())
-    except Exception:
-        # Fallback list if 'users' tab isn't ready yet
+    except:
         return ["Admin", "Unassigned"]
 
 st.title("📋 Work Order Management System")
 
 try:
-    # Load all necessary data
+    # Load Data
     df = load_wo_data()
     staff_options = load_user_list()
+
+    # --- STATUS SUMMARY DASHBOARD ---
+    st.subheader("📊 Status Overview")
+    total_orders = len(df)
+    pending = len(df[df['Status'] == 'Pending'])
+    in_progress = len(df[df['Status'] == 'In Progress'])
+    completed = len(df[df['Status'] == 'Completed'])
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total Orders", total_orders)
+    m2.metric("Pending", pending, delta_color="inverse")
+    m3.metric("In Progress", in_progress)
+    m4.metric("Completed", completed)
+    
+    st.divider()
 
     # --- SEARCH SECTION ---
     st.subheader("🔍 Search Work Order")
     search_query = st.text_input("Enter WO Number to Search", placeholder="e.g. 867")
 
     if search_query:
-        # Filter data by WO Number
+        # Match WO Number as string
         match = df[df['WO Number'].astype(str) == str(search_query)]
 
         if not match.empty:
             row = match.iloc[0]
             idx = match.index[0]
 
-            # --- DISPLAY ORDER DETAILS ---
             st.success(f"Work Order #{search_query} Found!")
             
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.write(f"**Date:** {row['Date']}")
                 st.write(f"**Client:** {row['Client_Name_Display']}")
                 st.write(f"**Phone:** {row['Client Phone']}")
             with col2:
                 st.write(f"**Category:** {row['Category']}")
                 st.write(f"**Subcategory:** {row['Subcategory']}")
-                st.write(f"**Description:** {row['Description']}")
             with col3:
                 st.write(f"**Current Status:** {row['Status']}")
-                st.write(f"**Current Assignee:** {row['Assigned To']}")
-
-            st.divider()
+                st.write(f"**Assigned To:** {row['Assigned To']}")
 
             # --- EDIT SECTION ---
-            st.subheader("✏️ Update Order")
-            
+            st.markdown("### ✏️ Update Order")
             edit_col1, edit_col2 = st.columns(2)
             
             status_options = ["Pending", "In Progress", "Completed", "On Hold", "Cancelled"]
-
-            # Logic for Status Dropdown
-            current_status = row['Status'] if row['Status'] in status_options else status_options[0]
-            new_status = edit_col1.selectbox(
-                "Update Status", 
-                status_options, 
-                index=status_options.index(current_status)
-            )
-
-            # Logic for Assigned To Dropdown (from 'users' tab)
-            current_assignee = str(row['Assigned To']).strip()
-            if current_assignee not in staff_options and current_assignee != 'nan':
-                staff_options.append(current_assignee)
             
-            # Find the correct index for the current person
+            # Status Selection
+            curr_stat = row['Status'] if row['Status'] in status_options else status_options[0]
+            new_status = edit_col1.selectbox("New Status", status_options, index=status_options.index(curr_stat))
+
+            # Staff Selection
+            curr_assign = str(row['Assigned To']).strip()
+            if curr_assign not in staff_options and curr_assign != 'nan':
+                staff_options.append(curr_assign)
+            
             try:
-                staff_idx = staff_options.index(current_assignee)
-            except ValueError:
+                staff_idx = staff_options.index(curr_assign)
+            except:
                 staff_idx = 0
+                
+            new_assignee = edit_col2.selectbox("New Assignee", staff_options, index=staff_idx)
 
-            new_assignee = edit_col2.selectbox(
-                "Reassign To", 
-                staff_options, 
-                index=staff_idx
-            )
-
-            if st.button("Save Changes", use_container_width=True):
-                # Update the row in the local dataframe
+            if st.button("Save Changes ✅", use_container_width=True):
                 df.at[idx, 'Status'] = new_status
                 df.at[idx, 'Assigned To'] = new_assignee
-
-                # Write back to Google Sheets
-                conn.update(spreadsheet=https://docs.google.com/spreadsheets/d/14Ke6jLoN94HnwltRwCME-U0u5KK3adUZbBkXEL2LHxM/edit?gid=0#gid=0, worksheet="WO_Log", data=df)
-                
-                st.balloons()
-                st.success(f"WO #{search_query} updated successfully!")
+                conn.update(spreadsheet=SHEET_URL, worksheet="WO_Log", data=df)
+                st.success("Changes Saved!")
                 st.rerun()
         else:
-            st.error(f"Work Order #{search_query} not found in the log.")
+            st.error(f"WO #{search_query} not found.")
 
-    # --- FULL LOG PREVIEW ---
+    # --- DATA PREVIEW ---
     st.divider()
-    st.subheader("All Active Work Orders")
-    # Show summary table
-    st.dataframe(df[['WO Number', 'Date', 'Client_Name_Display', 'Category', 'Status', 'Assigned To']], use_container_width=True)
+    st.subheader("Recent Activity")
+    st.dataframe(df[['WO Number', 'Date', 'Client_Name_Display', 'Status', 'Assigned To']].tail(10), use_container_width=True)
 
-    # --- ADD STAFF MEMBER SECTION ---
+    # --- ADMIN: ADD STAFF ---
     with st.expander("👤 Admin: Add New Staff Member"):
-        with st.form("new_user_form", clear_on_submit=True):
-            new_name = st.text_input("Staff Name")
-            new_email = st.text_input("Staff Email")
-            new_role = st.selectbox("Role", ["Technician", "Admin", "Sales", "Designer"])
-            
-            if st.form_submit_button("Add User to Database"):
-                if new_name:
-                    # Load current users tab
-                    users_df = conn.read(spreadsheet=https://docs.google.com/spreadsheets/d/14Ke6jLoN94HnwltRwCME-U0u5KK3adUZbBkXEL2LHxM/edit?gid=1731766061#gid=1731766061, worksheet="users", ttl=0)
-                    new_row = pd.DataFrame([{"email": new_email, "name": new_name, "role": new_role}])
-                    updated_users = pd.concat([users_df, new_row], ignore_index=True)
-                    # Update users tab
-                    conn.update(spreadsheet=https://docs.google.com/spreadsheets/d/14Ke6jLoN94HnwltRwCME-U0u5KK3adUZbBkXEL2LHxM/edit?gid=1731766061#gid=1731766061, worksheet="users", data=updated_users)
-                    st.success(f"{new_name} added! Refresh to see in dropdown.")
+        with st.form("add_user", clear_on_submit=True):
+            n_name = st.text_input("Name")
+            n_email = st.text_input("Email")
+            if st.form_submit_button("Add Staff"):
+                if n_name:
+                    u_df = conn.read(spreadsheet=SHEET_URL, worksheet="users", ttl=0)
+                    new_u = pd.DataFrame([{"email": n_email, "name": n_name, "role": "Staff"}])
+                    conn.update(spreadsheet=SHEET_URL, worksheet="users", data=pd.concat([u_df, new_u], ignore_index=True))
+                    st.success("User added!")
                     st.rerun()
 
 except Exception as e:
-    st.error("Could not load Work Order Log.")
-    st.write("Error Detail:", e)
+    st.error("An error occurred.")
+    st.write(e)
