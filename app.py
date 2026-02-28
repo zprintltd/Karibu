@@ -38,11 +38,14 @@ def load_user_list():
     except Exception as e:
         st.error(f"Could not read 'users' tab: {e}")
         return ["Admin", "Unassigned"]
+)
 
-# --- Inside the EDIT SECTION of your app.py ---
-# Make sure the selectbox is defined like this:
+st.title("📋 Karibu")
 
-staff_options = load_user_list()
+try:
+    # Load Data
+    df = load_wo_data()
+    staff_options = load_user_list()
 curr_assign = str(row['Assigned To']).strip()
 
 # Safety: If current person isn't in the list, add them so the app doesn't crash
@@ -61,13 +64,6 @@ new_assignee = edit_col2.selectbox(
     index=staff_idx,
     help="Select a name from the 'users' sheet"
 )
-
-st.title("📋 Work Order Management System")
-
-try:
-    # Load Data
-    df = load_wo_data()
-    staff_options = load_user_list()
 
     # --- STATUS SUMMARY DASHBOARD ---
     st.subheader("📊 Status Overview")
