@@ -1,25 +1,26 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 
-st.set_page_config(page_title="Work Order Manager", layout="wide")
-
-# 1. Establish Connection
-conn = st.connection("gsheets", type=GSheetsConnection)
-
-# 2. Configuration - Ensure this URL is your WO_Log Google Sheet link
-SHEET_URL = "https://docs.google.com/spreadsheets/d/14Ke6jLoN94HnwltRwCME-U0u5KK3adUZbBkXEL2LHxM/edit?usp=sharing"
-
 def load_wo_data():
-    # Reading the WO_Log tab
-    data = conn.read(spreadsheet=SHEET_URL, worksheet="WO_Log", ttl=0)
-    data.columns = [str(c).strip() for c in data.columns]
-    return data
+    """Load data from Google Sheets using pandas"""
+    
+    # Get the sheet ID from your URL
+    # URL: https://docs.google.com/spreadsheets/d/14Ke6jLoN94HnwltRwCME-U0u5KK3adUZbBkXEL2LHxM/edit#gid=0
+    SHEET_ID = "14Ke6jLoN94HnwltRwCME-U0u5KK3adUZbBkXEL2LHxM"  # Replace with your actual sheet ID
+    SHEET_NAME = "WO_Log"        # Replace with your worksheet name
+    
+    # Construct the CSV export URL
+    url = f"https://docs.google.com/spreadsheets/d/14Ke6jLoN94HnwltRwCME-U0u5KK3adUZbBkXEL2LHxM/gviz/tq?tqx=out:csv&sheet=WO_Log"
+    
+    try:
+        df = pd.read_csv(url)
+        return df
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        return pd.DataFrame()  # Return empty DataFrame on error
 
-st.title("📋 Karibu")
-
-try:
-    df = load_wo_data()
+# In your main app
+df = load_wo_data()
 
     # --- SEARCH SECTION ---
     st.subheader("🔍 Search Work Order")
