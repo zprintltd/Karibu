@@ -1,7 +1,6 @@
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
-from datetime import datetime
 
 # Set page to wide mode
 st.set_page_config(page_title="Work Order Manager", layout="wide")
@@ -17,133 +16,93 @@ except Exception:
     st.stop()
 
 def load_wo_data():
-    """Load Work Order data from the WO_Log tab"""
     data = conn.read(spreadsheet=SHEET_URL, worksheet="WO_Log", ttl=0)
     data.columns = [str(c).strip() for c in data.columns]
     return data
 
 def load_user_list():
-    """Load staff names from the 'users' tab with flexible naming"""
     try:
         user_data = conn.read(spreadsheet=SHEET_URL, worksheet="users", ttl=0)
-        # Force all column headers to lowercase to avoid "name" vs "Name" errors
         user_data.columns = [str(c).strip().lower() for c in user_data.columns]
-        
         if 'name' in user_data.columns:
-            names = sorted(user_data['name'].dropna().unique().tolist())
-            return [str(n) for n in names if str(n).strip() != ""]
-        else:
-            return ["Admin", "Unassigned"]
-    except Exception:
+            return sorted(user_data['name'].dropna().unique().tolist())
+        return ["Admin", "Unassigned"]
+    except:
         return ["Admin", "Unassigned"]
 
-st.title("📋 Karibu")
+st.title("📋 Karibu Work Order Manager")
 
 try:
-    # Load Data
     df = load_wo_data()
     staff_options = load_user_list()
 
-    # --- STATUS SUMMARY DASHBOARD ---
+    # --- DASHBOARD ---
     st.subheader("📊 Status Overview")
-    total_orders = len(df)
-    # Filter counts based on the 'Status' column
-    pending = len(df[df['Status'] == 'Pending'])
-    in_progress = len(df[df['Status'] == 'In Progress'])
-    completed = len(df[df['Status'] == 'Completed'])
-
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Total Orders", total_orders)
-    m2.metric("Pending", pending)
-    m3.metric("In Progress", in_progress)
-    m4.metric("Completed", completed)
-    
+    m1.metric("Total", len(df))
+    m2.metric("Pending", len(df[df['Status'] == 'Pending']))
+    m3.metric("In Progress", len(df[df['Status'] == 'In Progress']))
+    m4.metric("Completed", len(df[df['Status'] == 'Completed']))
     st.divider()
 
-    # --- SEARCH SECTION ---
-    st.subheader("🔍 Search Work Order")
-    search_query = st.text_input("Enter WO Number to Search", placeholder="e.g. 867")
+    # --- SEARCH & EDIT ---
+    st.subheader("🔍 Search & Update Order")
+    search_query = st.text_input("Enter WO Number", placeholder="Type WO number and press Enter")
 
     if search_query:
-        # Match WO Number as string
         match = df[df['WO Number'].astype(str) == str(search_query)]
 
         if not match.empty:
             row = match.iloc[0]
             idx = match.index[0]
 
-            st.success(f"Work Order #{search_query} Found!")
-            
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.write(f"**Client:** {row['Client_Name_Display']}")
-                st.write(f"**Phone:** {row['Client Phone']}")
-            with col2:
-                st.write(f"**Category:** {row['Category']}")
-                st.write(f"**Subcategory:** {row['Subcategory']}")
-            with col3:
-                st.write(f"**Current Status:** {row['Status']}")
-                st.write(f"**Current Assigned To:** {row['Assigned To']}")
-
-            # --- EDIT SECTION ---
-            st.markdown("### ✏️ Update Order")
-            edit_col1, edit_col2 = st.columns(2)
-            
-            status_options = ["Pending", "In Progress", "Completed", "On Hold", "Cancelled"]
-            
-            # Status Selection logic
-            curr_stat = str(row['Status']).strip()
-            stat_idx = status_options.index(curr_stat) if curr_stat in status_options else 0
-            new_status = edit_col1.selectbox("New Status", status_options, index=stat_idx)
-
-            # Staff Selection logic (Name-based)
-            curr_assign = str(row['Assigned To']).strip()
-            
-            # Add current assignee to list if they aren't in the staff_options list
-            if curr_assign not in staff_options and curr_assign != 'nan' and curr_assign != "":
-                staff_options.append(curr_assign)
-            
-            try:
-                staff_idx = staff_options.index(curr_assign)
-            except:
-                staff_idx = 0
+            # Display info in a nice box
+            with st.container(border=True):
+                st.write(f"### Work Order #{search_query}")
+                c1, c2, c3 = st.columns(3)
+                c1.write(f"**Client:** {row['Client_Name_Display']}")
+                c2.write(f"**Category:** {row['Category']}")
+                c3.write(f"**Description:** {row['Description']}")
                 
-            new_assignee = edit_col2.selectbox("Reassign To (Name)", staff_options, index=staff_idx)
-
-            if st.button("Save Changes ✅", use_container_width=True):
-                # Update local dataframe row
-                df.at[idx, 'Status'] = new_status
-                df.at[idx, 'Assigned To'] = new_assignee
+                st.markdown("---")
+                st.write("#### ✏️ Edit Assignment & Status")
                 
-                # Push back to Google Sheets
-                conn.update(spreadsheet=SHEET_URL, worksheet="WO_Log", data=df)
-                st.success("Changes Saved Successfully!")
-                st.rerun()
+                edit_col1, edit_col2 = st.columns(2)
+                
+                # Status Dropdown
+                status_list = ["Pending", "In Progress", "Completed", "On Hold", "Cancelled"]
+                curr_s = str(row['Status']).strip()
+                s_idx = status_list.index(curr_s) if curr_s in status_list else 0
+                new_status = edit_col1.selectbox("Set Status", status_list, index=s_idx)
+
+                # Staff Dropdown
+                curr_a = str(row['Assigned To']).strip()
+                if curr_a not in staff_options and curr_a != 'nan' and curr_a != "":
+                    staff_options.append(curr_a)
+                
+                try:
+                    a_idx = staff_options.index(curr_a)
+                except:
+                    a_idx = 0
+                
+                new_assignee = edit_col2.selectbox("Assigned To", staff_options, index=a_idx)
+
+                # SAVE BUTTON
+                if st.button("Save Changes ✅", use_container_width=True, type="primary"):
+                    df.at[idx, 'Status'] = new_status
+                    df.at[idx, 'Assigned To'] = new_assignee
+                    conn.update(spreadsheet=SHEET_URL, worksheet="WO_Log", data=df)
+                    st.success("Work Order Updated!")
+                    st.rerun()
         else:
-            st.error(f"Work Order #{search_query} not found.")
+            st.error("Work Order not found.")
 
-    # --- DATA PREVIEW (Cosmetic Update: No Index Column) ---
+    # --- TABLE ---
     st.divider()
     st.subheader("Recent Activity")
-    
-    # Selecting columns for preview and hiding the index
-    display_df = df[['WO Number', 'Date', 'Client_Name_Display', 'Status', 'Assigned To']].tail(10)
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
-
-    # --- ADMIN: ADD STAFF ---
-    with st.expander("👤 Admin: Add New Staff Member"):
-        st.info("The 'Name' entered here will appear in the 'Assigned To' dropdown.")
-        with st.form("add_user", clear_on_submit=True):
-            n_name = st.text_input("Staff Full Name")
-            n_email = st.text_input("Staff Email")
-            if st.form_submit_button("Add Staff"):
-                if n_name:
-                    u_df = conn.read(spreadsheet=SHEET_URL, worksheet="users", ttl=0)
-                    new_u = pd.DataFrame([{"email": n_email, "name": n_name, "role": "Staff"}])
-                    conn.update(spreadsheet=SHEET_URL, worksheet="users", data=pd.concat([u_df, new_u], ignore_index=True))
-                    st.success(f"{n_name} added to staff list!")
-                    st.rerun()
+    st.dataframe(df[['WO Number', 'Date', 'Client_Name_Display', 'Status', 'Assigned To']].tail(15), 
+                 use_container_width=True, hide_index=True)
 
 except Exception as e:
-    st.error("An error occurred while loading the data.")
+    st.error("Error connecting to data.")
     st.write(e)
