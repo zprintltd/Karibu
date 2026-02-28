@@ -8,7 +8,7 @@ st.set_page_config(page_title="Work Order Manager", layout="wide")
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # 2. Configuration - Ensure this URL is your WO_Log Google Sheet link
-SHEET_URL = "https://docs.google.com/spreadsheets/d/14Ke6jLoN94HnwltRwCME-U0u5KK3adUZbBkXEL2LHxM/edit?gid=0#gid=0"
+SHEET_URL = "https://docs.google.com/spreadsheets/d/14Ke6jLoN94HnwltRwCME-U0u5KK3adUZbBkXEL2LHxM/edit?usp=sharing"
 
 def load_wo_data():
     # Reading the WO_Log tab
