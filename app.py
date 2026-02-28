@@ -16,7 +16,7 @@ def load_wo_data():
     data.columns = [str(c).strip() for c in data.columns]
     return data
 
-st.title("📋 Work Order Management System")
+st.title("📋 Karibu")
 
 try:
     df = load_wo_data()
