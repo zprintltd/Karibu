@@ -19,7 +19,7 @@ def load_wo_data():
         st.error(f"Error loading data: {e}")
         return pd.DataFrame()  # Return empty DataFrame on error
 
-    try:
+try:
     df = load_wo_data()
 
     # --- SEARCH SECTION ---
