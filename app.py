@@ -38,7 +38,7 @@ def load_user_list():
     except Exception as e:
         st.error(f"Could not read 'users' tab: {e}")
         return ["Admin", "Unassigned"]
-
+)
 st.title("📋 Karibu")
 
 try:
