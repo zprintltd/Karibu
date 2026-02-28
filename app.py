@@ -9,7 +9,7 @@ st.set_page_config(page_title="Work Order Manager", layout="wide")
 # 1. Establish Connection
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 2. Pull URL from Secrets (Private)
+# 2. Pull URL from Secrets
 try:
     SHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet_url"]
 except Exception:
@@ -23,10 +23,11 @@ def load_wo_data():
     return data
 
 def load_user_list():
-    """Load staff names from the 'users' tab"""
+    """Load staff names (Column B) from the 'users' tab"""
     try:
         user_data = conn.read(spreadsheet=SHEET_URL, worksheet="users", ttl=0)
         user_data.columns = [str(c).strip() for c in user_data.columns]
+        # Specifically target the 'name' column (Column B)
         return sorted(user_data['name'].dropna().unique().tolist())
     except:
         return ["Admin", "Unassigned"]
@@ -47,7 +48,7 @@ try:
 
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Total Orders", total_orders)
-    m2.metric("Pending", pending, delta_color="inverse")
+    m2.metric("Pending", pending)
     m3.metric("In Progress", in_progress)
     m4.metric("Completed", completed)
     
@@ -76,7 +77,7 @@ try:
                 st.write(f"**Subcategory:** {row['Subcategory']}")
             with col3:
                 st.write(f"**Current Status:** {row['Status']}")
-                st.write(f"**Assigned To:** {row['Assigned To']}")
+                st.write(f"**Current Assigned To:** {row['Assigned To']}")
 
             # --- EDIT SECTION ---
             st.markdown("### ✏️ Update Order")
@@ -85,11 +86,14 @@ try:
             status_options = ["Pending", "In Progress", "Completed", "On Hold", "Cancelled"]
             
             # Status Selection
-            curr_stat = row['Status'] if row['Status'] in status_options else status_options[0]
-            new_status = edit_col1.selectbox("New Status", status_options, index=status_options.index(curr_stat))
+            curr_stat = str(row['Status']).strip()
+            stat_idx = status_options.index(curr_stat) if curr_stat in status_options else 0
+            new_status = edit_col1.selectbox("New Status", status_options, index=stat_idx)
 
-            # Staff Selection
+            # Staff Selection (Ensuring we use Names, not Emails)
             curr_assign = str(row['Assigned To']).strip()
+            
+            # If the name currently in the sheet isn't in our 'users' list, add it as an option
             if curr_assign not in staff_options and curr_assign != 'nan':
                 staff_options.append(curr_assign)
             
@@ -98,7 +102,7 @@ try:
             except:
                 staff_idx = 0
                 
-            new_assignee = edit_col2.selectbox("New Assignee", staff_options, index=staff_idx)
+            new_assignee = edit_col2.selectbox("Reassign To (Name)", staff_options, index=staff_idx)
 
             if st.button("Save Changes ✅", use_container_width=True):
                 df.at[idx, 'Status'] = new_status
@@ -109,22 +113,26 @@ try:
         else:
             st.error(f"WO #{search_query} not found.")
 
-    # --- DATA PREVIEW ---
+    # --- DATA PREVIEW (Cosmetic Update: No Index Column) ---
     st.divider()
     st.subheader("Recent Activity")
-    st.dataframe(df[['WO Number', 'Date', 'Client_Name_Display', 'Status', 'Assigned To']].tail(10), use_container_width=True)
+    
+    # We use hide_index=True to remove that first column of numbers
+    display_df = df[['WO Number', 'Date', 'Client_Name_Display', 'Status', 'Assigned To']].tail(10)
+    st.dataframe(display_df, use_container_width=True, hide_index=True)
 
     # --- ADMIN: ADD STAFF ---
     with st.expander("👤 Admin: Add New Staff Member"):
+        st.info("Ensure the 'Name' provided here is what you want to appear in the dropdown.")
         with st.form("add_user", clear_on_submit=True):
-            n_name = st.text_input("Name")
-            n_email = st.text_input("Email")
+            n_name = st.text_input("Staff Full Name")
+            n_email = st.text_input("Staff Email")
             if st.form_submit_button("Add Staff"):
                 if n_name:
                     u_df = conn.read(spreadsheet=SHEET_URL, worksheet="users", ttl=0)
                     new_u = pd.DataFrame([{"email": n_email, "name": n_name, "role": "Staff"}])
                     conn.update(spreadsheet=SHEET_URL, worksheet="users", data=pd.concat([u_df, new_u], ignore_index=True))
-                    st.success("User added!")
+                    st.success(f"{n_name} added to staff list!")
                     st.rerun()
 
 except Exception as e:
