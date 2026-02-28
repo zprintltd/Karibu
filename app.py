@@ -23,14 +23,44 @@ def load_wo_data():
     return data
 
 def load_user_list():
-    """Load staff names (Column B) from the 'users' tab"""
+    """Load staff names from the 'users' tab with flexible naming"""
     try:
         user_data = conn.read(spreadsheet=SHEET_URL, worksheet="users", ttl=0)
-        user_data.columns = [str(c).strip() for c in user_data.columns]
-        # Specifically target the 'name' column (Column B)
-        return sorted(user_data['name'].dropna().unique().tolist())
-    except:
+        # Force all column headers to lowercase to avoid "name" vs "Name" errors
+        user_data.columns = [str(c).strip().lower() for c in user_data.columns]
+        
+        if 'name' in user_data.columns:
+            names = sorted(user_data['name'].dropna().unique().tolist())
+            return [str(n) for n in names if str(n).strip() != ""]
+        else:
+            st.warning("Column 'name' not found in 'users' tab. Check your headers!")
+            return ["Admin", "Unassigned"]
+    except Exception as e:
+        st.error(f"Could not read 'users' tab: {e}")
         return ["Admin", "Unassigned"]
+
+# --- Inside the EDIT SECTION of your app.py ---
+# Make sure the selectbox is defined like this:
+
+staff_options = load_user_list()
+curr_assign = str(row['Assigned To']).strip()
+
+# Safety: If current person isn't in the list, add them so the app doesn't crash
+if curr_assign not in staff_options and curr_assign != 'nan' and curr_assign != "":
+    staff_options.append(curr_assign)
+
+# Calculate the index for the dropdown
+try:
+    staff_idx = staff_options.index(curr_assign)
+except (ValueError, IndexError):
+    staff_idx = 0
+
+new_assignee = edit_col2.selectbox(
+    "Reassign To", 
+    options=staff_options, 
+    index=staff_idx,
+    help="Select a name from the 'users' sheet"
+)
 
 st.title("📋 Work Order Management System")
 
