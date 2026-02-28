@@ -33,40 +33,21 @@ def load_user_list():
             names = sorted(user_data['name'].dropna().unique().tolist())
             return [str(n) for n in names if str(n).strip() != ""]
         else:
-            st.warning("Column 'name' not found in 'users' tab. Check your headers!")
             return ["Admin", "Unassigned"]
-    except Exception as e:
-        st.error(f"Could not read 'users' tab: {e}")
+    except Exception:
         return ["Admin", "Unassigned"]
-)
+
 st.title("📋 Karibu")
 
 try:
     # Load Data
     df = load_wo_data()
     staff_options = load_user_list()
-curr_assign = str(row['Assigned To']).strip()
-
-# Safety: If current person isn't in the list, add them so the app doesn't crash
-if curr_assign not in staff_options and curr_assign != 'nan' and curr_assign != "":
-    staff_options.append(curr_assign)
-
-# Calculate the index for the dropdown
-try:
-    staff_idx = staff_options.index(curr_assign)
-except (ValueError, IndexError):
-    staff_idx = 0
-
-new_assignee = edit_col2.selectbox(
-    "Reassign To", 
-    options=staff_options, 
-    index=staff_idx,
-    help="Select a name from the 'users' sheet"
-)
 
     # --- STATUS SUMMARY DASHBOARD ---
     st.subheader("📊 Status Overview")
     total_orders = len(df)
+    # Filter counts based on the 'Status' column
     pending = len(df[df['Status'] == 'Pending'])
     in_progress = len(df[df['Status'] == 'In Progress'])
     completed = len(df[df['Status'] == 'Completed'])
@@ -110,16 +91,16 @@ new_assignee = edit_col2.selectbox(
             
             status_options = ["Pending", "In Progress", "Completed", "On Hold", "Cancelled"]
             
-            # Status Selection
+            # Status Selection logic
             curr_stat = str(row['Status']).strip()
             stat_idx = status_options.index(curr_stat) if curr_stat in status_options else 0
             new_status = edit_col1.selectbox("New Status", status_options, index=stat_idx)
 
-            # Staff Selection (Ensuring we use Names, not Emails)
+            # Staff Selection logic (Name-based)
             curr_assign = str(row['Assigned To']).strip()
             
-            # If the name currently in the sheet isn't in our 'users' list, add it as an option
-            if curr_assign not in staff_options and curr_assign != 'nan':
+            # Add current assignee to list if they aren't in the staff_options list
+            if curr_assign not in staff_options and curr_assign != 'nan' and curr_assign != "":
                 staff_options.append(curr_assign)
             
             try:
@@ -130,25 +111,28 @@ new_assignee = edit_col2.selectbox(
             new_assignee = edit_col2.selectbox("Reassign To (Name)", staff_options, index=staff_idx)
 
             if st.button("Save Changes ✅", use_container_width=True):
+                # Update local dataframe row
                 df.at[idx, 'Status'] = new_status
                 df.at[idx, 'Assigned To'] = new_assignee
+                
+                # Push back to Google Sheets
                 conn.update(spreadsheet=SHEET_URL, worksheet="WO_Log", data=df)
-                st.success("Changes Saved!")
+                st.success("Changes Saved Successfully!")
                 st.rerun()
         else:
-            st.error(f"WO #{search_query} not found.")
+            st.error(f"Work Order #{search_query} not found.")
 
     # --- DATA PREVIEW (Cosmetic Update: No Index Column) ---
     st.divider()
     st.subheader("Recent Activity")
     
-    # We use hide_index=True to remove that first column of numbers
+    # Selecting columns for preview and hiding the index
     display_df = df[['WO Number', 'Date', 'Client_Name_Display', 'Status', 'Assigned To']].tail(10)
     st.dataframe(display_df, use_container_width=True, hide_index=True)
 
     # --- ADMIN: ADD STAFF ---
     with st.expander("👤 Admin: Add New Staff Member"):
-        st.info("Ensure the 'Name' provided here is what you want to appear in the dropdown.")
+        st.info("The 'Name' entered here will appear in the 'Assigned To' dropdown.")
         with st.form("add_user", clear_on_submit=True):
             n_name = st.text_input("Staff Full Name")
             n_email = st.text_input("Staff Email")
@@ -161,5 +145,5 @@ new_assignee = edit_col2.selectbox(
                     st.rerun()
 
 except Exception as e:
-    st.error("An error occurred.")
+    st.error("An error occurred while loading the data.")
     st.write(e)
