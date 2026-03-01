@@ -3,7 +3,7 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 
 # Set page to wide mode
-st.set_page_config(page_title="Karibu Work Order Manager", layout="wide")
+st.set_page_config(page_title="Karibu Task Manager", layout="wide")
 
 # 1. Establish Connection
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -37,12 +37,12 @@ def load_user_list():
         user_data.columns = [str(c).strip().lower() for c in user_data.columns]
         
         if 'name' in user_data.columns:
-            return sorted(user_data['Name'].dropna().astype(str).unique().tolist())
+            return sorted(user_data['name'].dropna().astype(str).unique().tolist())
         return ["Admin", "Unassigned"]
     except:
         return ["Admin", "Unassigned"]
 
-st.title("📋 Karibu Work Order Manager")
+st.title("📋 Karibu Active Task Manager")
 
 try:
     # Initial Data Load
@@ -50,18 +50,17 @@ try:
     staff_options = load_user_list()
 
     # --- SEARCH SECTION ---
-    st.subheader("🔍 Search & Update Order")
+    st.subheader("🔍 Search & Update Specific WO")
     
     col_search, col_clear = st.columns([4, 1])
     
-    # Using session state to allow clearing
     if 'search_val' not in st.session_state:
         st.session_state.search_val = ""
 
     search_query = col_search.text_input(
         "Enter WO Number", 
         value=st.session_state.search_val,
-        placeholder="Type WO number (e.g., 1200) and press Enter"
+        placeholder="Search any WO number..."
     ).strip()
 
     if col_clear.button("Clear Search", use_container_width=True):
@@ -69,33 +68,29 @@ try:
         st.rerun()
 
     if search_query:
-        # Match search against cleaned string column
         match = df[df['WO Number'] == str(search_query)]
 
         if not match.empty:
             row = match.iloc[0]
             idx = match.index[0]
 
-            # Display info in a highlighted container
             with st.container(border=True):
-                st.write(f"### Work Order #{search_query}")
+                st.write(f"### Editing Work Order #{search_query}")
                 c1, c2, c3 = st.columns(3)
                 c1.write(f"**Client:** {row['Client_Name_Display']}")
                 c2.write(f"**Category:** {row['Category']}")
-                c3.write(f"**Description:** {row['Description']}")
+                c3.write(f"**Current Status:** {row['Status']}")
                 
                 st.markdown("---")
-                st.write("#### ✏️ Edit Assignment & Status")
-                
                 edit_col1, edit_col2 = st.columns(2)
                 
                 # Status Dropdown
                 status_list = ["Pending", "In Progress", "Completed", "On Hold", "Cancelled"]
                 curr_s = str(row['Status']).strip()
                 s_idx = status_list.index(curr_s) if curr_s in status_list else 0
-                new_status = edit_col1.selectbox("Set Status", status_list, index=s_idx)
+                new_status = edit_col1.selectbox("Change Status", status_list, index=s_idx, key="status_edit")
 
-                # Staff Dropdown (Names only)
+                # Staff Dropdown
                 curr_a = str(row['Assigned To']).strip()
                 if curr_a not in staff_options and curr_a != 'nan' and curr_a != "":
                     staff_options.append(curr_a)
@@ -105,28 +100,42 @@ try:
                 except:
                     a_idx = 0
                 
-                new_assignee = edit_col2.selectbox("Assigned To (Staff Name)", staff_options, index=a_idx)
+                new_assignee = edit_col2.selectbox("Reassign To", staff_options, index=a_idx, key="staff_edit")
 
-                # SAVE BUTTON
                 if st.button("Save Changes ✅", use_container_width=True, type="primary"):
                     df.at[idx, 'Status'] = new_status
                     df.at[idx, 'Assigned To'] = new_assignee
-                    
-                    # Push update to Google Sheets
                     conn.update(spreadsheet=SHEET_URL, worksheet="WO_Log", data=df)
-                    st.success(f"Work Order #{search_query} Updated!")
+                    st.success(f"WO #{search_query} Updated!")
                     st.rerun()
         else:
             st.error(f"Work Order '{search_query}' not found.")
 
-    # --- RECENT ACTIVITY TABLE ---
+    # --- FILTERED ACTIVE TASKS TABLE ---
     st.divider()
-    st.subheader("Recent Activity")
-    st.dataframe(
-        df[['WO Number', 'Date', 'Client_Name_Display', 'Status', 'Assigned To']].tail(15), 
-        use_container_width=True, 
-        hide_index=True
+    st.subheader("🚀 Active Tasks (Pending / In Progress / Unassigned)")
+
+    # 1. Filter for Pending or In Progress
+    # 2. OR Filter for empty/Unassigned staff
+    active_mask = (
+        (df['Status'].isin(['Pending', 'In Progress'])) | 
+        (df['Assigned To'].isna()) | 
+        (df['Assigned To'].str.lower() == 'unassigned') |
+        (df['Assigned To'] == '')
     )
+    
+    # Apply the mask and exclude Completed/Cancelled strictly
+    active_df = df[active_mask]
+    active_df = active_df[~active_df['Status'].isin(['Completed', 'Cancelled'])]
+
+    if not active_df.empty:
+        st.dataframe(
+            active_df[['WO Number', 'Date', 'Client_Name_Display', 'Status', 'Assigned To']], 
+            use_container_width=True, 
+            hide_index=True
+        )
+    else:
+        st.info("All caught up! No pending or unassigned tasks found.")
 
 except Exception as e:
     st.error("Application Error")
