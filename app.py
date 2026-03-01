@@ -37,7 +37,7 @@ def load_user_list():
         user_data.columns = [str(c).strip().lower() for c in user_data.columns]
         
         if 'name' in user_data.columns:
-            return sorted(user_data['name'].dropna().astype(str).unique().tolist())
+            return sorted(user_data['Name'].dropna().astype(str).unique().tolist())
         return ["Admin", "Unassigned"]
     except:
         return ["Admin", "Unassigned"]
