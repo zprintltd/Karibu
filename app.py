@@ -2,7 +2,7 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 
-# Set page to wide mode
+# Set page configuration
 st.set_page_config(page_title="Karibu Task Manager", layout="wide")
 
 # 1. Establish Connection
@@ -16,69 +16,62 @@ except Exception:
     st.stop()
 
 def load_wo_data():
-    """Load WO data and clean WO Number column for better searching"""
+    """Load WO data and clean columns/numbers"""
     data = conn.read(spreadsheet=SHEET_URL, worksheet="WO_Log", ttl=0)
     data.columns = [str(c).strip() for c in data.columns]
     
-    # Fix for search: remove .0 from numbers and convert to clean text
     if 'WO Number' in data.columns:
+        # Convert to string, remove .0, and make uppercase for easier matching
         data['WO Number'] = (
             data['WO Number']
             .astype(str)
             .str.replace(r'\.0$', '', regex=True)
             .str.strip()
+            .str.upper()
         )
     return data
 
 def load_user_list():
-    """Explicitly load names from 'users' tab"""
+    """Load names from 'users' tab, Column B ('Name')"""
     try:
-        # We read the 'users' worksheet
         user_data = conn.read(spreadsheet=SHEET_URL, worksheet="users", ttl=0)
-        
-        # Clean up column headers (lowercase and no spaces)
+        # Standardize headers to lowercase to find 'name' column
         user_data.columns = [str(c).strip().lower() for c in user_data.columns]
         
-        # Look for a column named 'Name'
-        if 'Name' in user_data.columns:
-            # Get all non-empty names as a list
+        if 'name' in user_data.columns:
             name_list = user_data['name'].dropna().astype(str).str.strip().unique().tolist()
-            # Filter out empty strings
-            valid_names = [n for n in name_list if n != ""]
-            return sorted(valid_names)
-        else:
-            return ["Admin", "Unassigned"]
-    except:
-        return ["Admin", "Unassigned"]
+            return [n for n in name_list if n != ""]
+        return []
+    except Exception as e:
+        return []
 
 st.title("📋 Karibu Active Task Manager")
 
 try:
     # Initial Data Load
     df = load_wo_data()
-    # We load the names here to use in the dropdown below
     staff_names = load_user_list()
 
     # --- SEARCH & EDIT SECTION ---
     st.subheader("🔍 Search & Update Specific WO")
-    
     col_search, col_clear = st.columns([4, 1])
     
     if 'search_val' not in st.session_state:
         st.session_state.search_val = ""
 
+    # Search input is converted to uppercase to match the cleaned df
     search_query = col_search.text_input(
         "Enter WO Number", 
         value=st.session_state.search_val,
-        placeholder="Search any WO number..."
-    ).strip()
+        placeholder="Search (e.g., 1200 or WO-867)..."
+    ).strip().upper()
 
     if col_clear.button("Clear Search", use_container_width=True):
         st.session_state.search_val = ""
         st.rerun()
 
     if search_query:
-        match = df[df['WO Number'] == str(search_query)]
+        match = df[df['WO Number'] == search_query]
 
         if not match.empty:
             row = match.iloc[0]
@@ -94,24 +87,28 @@ try:
                 st.markdown("---")
                 edit_col1, edit_col2 = st.columns(2)
                 
-                # 1. Status Dropdown
+                # 1. Status Dropdown (Standardized list)
                 status_list = ["Pending", "In progress", "Completed", "On Hold", "Cancelled"]
                 curr_s = str(row['Status']).strip()
-                s_idx = status_list.index(curr_s) if curr_s in status_list else 0
+                
+                # Find index regardless of case (pending vs Pending)
+                try:
+                    s_idx = [s.lower() for s in status_list].index(curr_s.lower())
+                except ValueError:
+                    s_idx = 0
+                
                 new_status = edit_col1.selectbox("Change Status", status_list, index=s_idx)
 
                 # 2. Staff Dropdown (Reassign To)
-                # Combine our sheet names with 'Admin' and 'Unassigned'
                 dropdown_options = sorted(list(set(["Admin", "Unassigned"] + staff_names)))
-                
                 curr_a = str(row['Assigned To']).strip()
-                # If current person isn't in our list (like an old email), add it temporarily
-                if curr_a not in dropdown_options and curr_a != 'nan' and curr_a != "":
+                
+                if curr_a not in dropdown_options and curr_a.lower() != 'nan' and curr_a != "":
                     dropdown_options.append(curr_a)
                 
                 try:
                     a_idx = dropdown_options.index(curr_a)
-                except:
+                except ValueError:
                     a_idx = 0
                 
                 new_assignee = edit_col2.selectbox("Reassign To", dropdown_options, index=a_idx)
@@ -129,17 +126,24 @@ try:
     st.divider()
     st.subheader("🚀 Active Tasks")
 
-    # Filter strictly for Pending/In progress or Unassigned
-    # AND strictly exclude Completed/Cancelled
-    active_df = df[
-        (df['Status'].isin(['Pending', 'In progress'])) | 
-        (df['Assigned To'].isna()) | 
-        (df['Assigned To'].str.lower() == 'unassigned') |
-        (df['Assigned To'] == '')
-    ]
+    # Force Status and Assigned To to string to prevent errors
+    df['Status'] = df['Status'].astype(str)
+    df['Assigned To'] = df['Assigned To'].astype(str)
+
+    # CASE-INSENSITIVE FILTERING
+    is_pending = df['Status'].str.lower() == 'pending'
+    is_in_progress = df['Status'].str.lower() == 'in progress'
+    is_unassigned = (
+        (df['Assigned To'].str.lower() == 'nan') | 
+        (df['Assigned To'].str.lower() == 'unassigned') | 
+        (df['Assigned To'].str.strip() == '')
+    )
     
-    # Final exclusion to make sure no 'Completed' ones sneak in
-    final_view = active_df[~active_df['Status'].isin(['Completed', 'Cancelled'])]
+    active_mask = (is_pending | is_in_progress | is_unassigned)
+    
+    # Exclude Completed and Cancelled regardless of case
+    final_view = df[active_mask]
+    final_view = final_view[~final_view['Status'].str.lower().isin(['completed', 'cancelled'])]
 
     if not final_view.empty:
         st.dataframe(
@@ -148,8 +152,8 @@ try:
             hide_index=True
         )
     else:
-        st.info("No active tasks found. Everything is completed!")
+        st.info("No active tasks found (Pending, In progress, or Unassigned).")
 
 except Exception as e:
-    st.error("Application Error")
+    st.error("⚠️ Application Error")
     st.write(f"Details: {e}")
