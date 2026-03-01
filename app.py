@@ -95,7 +95,7 @@ try:
                 edit_col1, edit_col2 = st.columns(2)
                 
                 # 1. Status Dropdown
-                status_list = ["Pending", "In Progress", "Completed", "On Hold", "Cancelled"]
+                status_list = ["Pending", "In progress", "Completed", "On Hold", "Cancelled"]
                 curr_s = str(row['Status']).strip()
                 s_idx = status_list.index(curr_s) if curr_s in status_list else 0
                 new_status = edit_col1.selectbox("Change Status", status_list, index=s_idx)
@@ -129,10 +129,10 @@ try:
     st.divider()
     st.subheader("🚀 Active Tasks")
 
-    # Filter strictly for Pending/In Progress or Unassigned
+    # Filter strictly for Pending/In progress or Unassigned
     # AND strictly exclude Completed/Cancelled
     active_df = df[
-        (df['Status'].isin(['Pending', 'In Progress'])) | 
+        (df['Status'].isin(['Pending', 'In progress'])) | 
         (df['Assigned To'].isna()) | 
         (df['Assigned To'].str.lower() == 'unassigned') |
         (df['Assigned To'] == '')
