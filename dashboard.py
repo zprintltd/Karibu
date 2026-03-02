@@ -12,16 +12,19 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_data():
     """Fetch and clean data for analysis"""
-    df = conn.read(worksheet="WO_Log", ttl=0)
+    try:
+        # Check if secret exists
+        url = st.secrets["connections"]["gsheets"]["spreadsheet_url"]
+    except Exception:
+        st.error("Missing GSheets URL in Secrets! Please add it to App Settings.")
+        st.stop()
+
+    df = conn.read(spreadsheet=url, worksheet="WO_Log", ttl=0)
     df.columns = [str(c).strip() for c in df.columns]
     
-    # Convert dates to datetime objects for time-based filtering
+    # Rest of the cleaning...
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-    df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')
-    
-    # Standardize Status and Assigned To
     df['Status_Lower'] = df['Status'].astype(str).str.lower().str.strip()
-    df['Staff_Lower'] = df['Assigned To'].astype(str).str.lower().str.strip()
     return df
 
 try:
