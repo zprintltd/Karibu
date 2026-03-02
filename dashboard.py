@@ -9,7 +9,7 @@ st.set_page_config(page_title="Karibu Performance Dashboard", layout="wide")
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_data():
-    """Fetch and clean data for analysis with robust column finding"""
+    """Fetch and clean data with specific fixes for empty subcategories"""
     try:
         url = st.secrets["connections"]["gsheets"]["spreadsheet_url"]
     except Exception:
@@ -17,29 +17,27 @@ def load_data():
         st.stop()
 
     df = conn.read(spreadsheet=url, worksheet="WO_Log", ttl=0)
-    # Clean headers
     df.columns = [str(c).strip() for c in df.columns]
     
     # 1. Handle Dates
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
     
     # 2. Standardize Status
-    if 'Status' in df.columns:
-        df['Status_Lower'] = df['Status'].astype(str).str.lower().str.strip()
-    else:
-        df['Status_Lower'] = "unknown"
+    df['Status_Lower'] = df['Status'].astype(str).str.lower().str.strip()
 
-    # 3. Handle 'Assigned To' (The column causing the error)
-    # We look for a column that contains 'Assigned' just in case of typos
+    # 3. FIX FOR TREEMAP ERROR: Fill empty Category or Subcategory
+    # Replace empty strings, spaces, or NaNs with 'GENERAL'
+    df['Category'] = df['Category'].astype(str).replace(['', 'nan', 'None', ' '], 'UNCATEGORIZED')
+    df['Subcategory'] = df['Subcategory'].astype(str).replace(['', 'nan', 'None', ' '], 'GENERAL')
+
+    # 4. Handle Staff/Assigned To
     assigned_col = next((c for c in df.columns if 'Assigned' in c), None)
-    
     if assigned_col:
-        df['Staff_Lower'] = df[assigned_col].astype(str).str.lower().str.strip()
-        # Create a clean display version for charts
-        df['Staff_Display'] = df[assigned_col].fillna("Unassigned")
+        df['Staff_Display'] = df[assigned_col].astype(str).replace(['', 'nan', 'None', ' '], 'Unassigned')
+        df['Staff_Lower'] = df['Staff_Display'].str.lower()
     else:
-        df['Staff_Lower'] = "unassigned"
-        df['Staff_Display'] = "Unassigned"
+        df['Staff_Display'] = 'Unassigned'
+        df['Staff_Lower'] = 'unassigned'
         
     return df
 
@@ -91,16 +89,31 @@ try:
 
     st.divider()
 
-    # --- YTD ANALYSIS ---
-    st.subheader("📈 Year-To-Date (YTD) Activity")
-    completed_ytd = df[(df['Date'].dt.year == this_year) & (df['Status_Lower'] == 'completed')]
+# --- UPDATED YTD ANALYSIS SECTION ---
+st.subheader("📈 Year-To-Date (YTD) Activity")
+completed_ytd = df[(df['Date'].dt.year == this_year) & (df['Status_Lower'] == 'completed')]
+
+if not completed_ytd.empty:
+    st.write("**Category & Subcategory Volume (Completed Work)**")
     
-    if not completed_ytd.empty:
-        fig_tree = px.treemap(completed_ytd, path=['Category', 'Subcategory'], 
-                              title="Completed Categories Hierarchy")
+    # We ensure there are no duplicate "Parent/Child" names which also causes errors
+    # If Category is same as Subcategory, we tweak it slightly for the chart
+    plot_df = completed_ytd.copy()
+    plot_df.loc[plot_df['Category'] == plot_df['Subcategory'], 'Subcategory'] = plot_df['Subcategory'] + " "
+    
+    try:
+        fig_tree = px.treemap(
+            plot_df, 
+            path=[px.Constant("All Work"), 'Category', 'Subcategory'], # Added root 'All Work' for stability
+            color='Category',
+            title="Completed Categories Hierarchy"
+        )
         st.plotly_chart(fig_tree, use_container_width=True)
-    else:
-        st.info("No completed data for YTD.")
+    except Exception as tree_err:
+        st.warning(f"Treemap could not render: {tree_err}. Showing simple bar chart instead.")
+        st.bar_chart(completed_ytd['Category'].value_counts())
+else:
+    st.info("No completed data for YTD.")
 
     # --- STAFF PERFORMANCE ---
     st.divider()
