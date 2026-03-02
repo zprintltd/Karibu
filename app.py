@@ -93,3 +93,116 @@ try:
                     conn.update(spreadsheet=SHEET_URL, worksheet="Clients", data=df_clients)
 
                 # --- B. WO_LOG LOGIC ---
+                try:
+                    nums = pd.to_numeric(df_wo['WO Number'], errors='coerce')
+                    new_wo_num = int(nums.max()) + 1 if not pd.isna(nums.max()) else 1001
+                except:
+                    new_wo_num = 1001
+                
+                now = datetime.now()
+                iso_date = now.strftime("%Y-%m-%d")
+                short_date = now.strftime("%d%m%y")
+                
+                filename = f"WO{str(new_wo_num).zfill(3)}_{short_date}_{f_cat}-{f_sub}_{f_client_name}_{f_desc}_{f_ver}".upper().replace(" ", "_")
+                
+                # EXACT HEADER MAPPING
+                new_wo_data = {
+                    "WO Number": str(new_wo_num),           # A
+                    "Date": iso_date,                      # B
+                    "Category": f_cat,                     # C
+                    "Subcategory": f_sub,                  # D
+                    "Client": client_id,                   # E (ClientID recorded here)
+                    "Client Phone": f_phone,               # F (Phone recorded here)
+                    "Description": f_desc.upper(),         # G
+                    "Version": f_ver.upper(),              # H
+                    "Full Filename": filename,             # I
+                    "Timestamp": now.strftime("%Y-%m-%d %H:%M:%S"), # J
+                    "Status": "Pending",                   # K
+                    "Client_Name_Display": f_client_name.upper(), # M
+                    "Assigned To": "Unassigned"            # N
+                }
+                
+                new_wo_row = pd.DataFrame([new_wo_data])
+                
+                # Append and clean up temp search column before upload
+                df_wo = pd.concat([df_wo, new_wo_row], ignore_index=True)
+                if 'WO_SEARCH' in df_wo.columns:
+                    df_wo = df_wo.drop(columns=['WO_SEARCH'])
+
+                conn.update(spreadsheet=SHEET_URL, worksheet="WO_Log", data=df_wo)
+                st.success(f"WO #{new_wo_num} Created!")
+                st.rerun()
+            else:
+                st.error("Please fill in Client Name, Category, and Subcategory.")
+
+    # --- SECTION 2: SEARCH & EDIT ---
+    st.subheader("🔍 Search & Update")
+    search_query = st.text_input("Search by WO Number").strip().upper()
+
+    if search_query and not df_wo.empty:
+        match = df_wo[df_wo['WO_SEARCH'] == search_query]
+        if not match.empty:
+            row = match.iloc[0]
+            idx = match.index[0]
+            with st.container(border=True):
+                st.write(f"### Editing WO #{search_query}")
+                st.caption(f"**Filename:** {row.get('Full Filename', 'N/A')}")
+                
+                e_col1, e_col2 = st.columns(2)
+                status_list = ["Pending", "In progress", "Completed", "On Hold", "Cancelled"]
+                curr_s = str(row['Status']).strip()
+                try:
+                    s_idx = [s.lower() for s in status_list].index(curr_s.lower())
+                except:
+                    s_idx = 0
+                new_status = e_col1.selectbox("Status", status_list, index=s_idx)
+
+                # User list
+                users = []
+                if not df_users.empty:
+                    u_cols = [c.strip().lower() for c in df_users.columns]
+                    if 'name' in u_cols:
+                        name_col = df_users.columns[u_cols.index('name')]
+                        users = sorted(df_users[name_col].dropna().unique().tolist())
+                
+                drop_opts = sorted(list(set(["Admin", "Unassigned"] + users)))
+                curr_a = str(row['Assigned To']).strip()
+                if curr_a not in drop_opts and curr_a.lower() != 'nan' and curr_a != "":
+                    drop_opts.append(curr_a)
+                try:
+                    a_idx = drop_opts.index(curr_a)
+                except:
+                    a_idx = 0
+                new_assignee = e_col2.selectbox("Assigned To", drop_opts, index=a_idx)
+
+                if st.button("Save Changes ✅"):
+                    df_wo.at[idx, 'Status'] = new_status
+                    df_wo.at[idx, 'Assigned To'] = new_assignee
+                    
+                    if 'WO_SEARCH' in df_wo.columns:
+                        df_wo = df_wo.drop(columns=['WO_SEARCH'])
+                        
+                    conn.update(spreadsheet=SHEET_URL, worksheet="WO_Log", data=df_wo)
+                    st.success("Updated!")
+                    st.rerun()
+
+    # --- SECTION 3: ACTIVE TASKS ---
+    st.divider()
+    st.subheader("🚀 Active Tasks")
+    if not df_wo.empty:
+        df_wo['Status'] = df_wo['Status'].astype(str)
+        df_wo['Assigned To'] = df_wo['Assigned To'].astype(str)
+
+        active_mask = (df_wo['Status'].str.lower().isin(['pending', 'in progress'])) | \
+                      (df_wo['Assigned To'].str.lower().isin(['nan', 'unassigned', '']))
+        
+        final_view = df_wo[active_mask]
+        final_view = final_view[~final_view['Status'].str.lower().isin(['completed', 'cancelled'])]
+
+        if not final_view.empty:
+            st.dataframe(final_view[['WO Number', 'Date', 'Client_Name_Display', 'Status', 'Assigned To']], use_container_width=True, hide_index=True)
+        else:
+            st.info("No active tasks.")
+
+except Exception as e:
+    st.error(f"Application Error: {e}")
