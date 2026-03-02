@@ -4,8 +4,10 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime
 
+# 1. Page Config
 st.set_page_config(page_title="Karibu Performance Dashboard", layout="wide")
 
+# 2. Connection
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_data():
@@ -19,18 +21,17 @@ def load_data():
     df = conn.read(spreadsheet=url, worksheet="WO_Log", ttl=0)
     df.columns = [str(c).strip() for c in df.columns]
     
-    # 1. Handle Dates
+    # Handle Dates
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
     
-    # 2. Standardize Status
+    # Standardize Status
     df['Status_Lower'] = df['Status'].astype(str).str.lower().str.strip()
 
-    # 3. FIX FOR TREEMAP ERROR: Fill empty Category or Subcategory
-    # Replace empty strings, spaces, or NaNs with 'GENERAL'
+    # FIX FOR TREEMAP ERROR: Fill empty Category or Subcategory
     df['Category'] = df['Category'].astype(str).replace(['', 'nan', 'None', ' '], 'UNCATEGORIZED')
     df['Subcategory'] = df['Subcategory'].astype(str).replace(['', 'nan', 'None', ' '], 'GENERAL')
 
-    # 4. Handle Staff/Assigned To
+    # Handle Staff/Assigned To
     assigned_col = next((c for c in df.columns if 'Assigned' in c), None)
     if assigned_col:
         df['Staff_Display'] = df[assigned_col].astype(str).replace(['', 'nan', 'None', ' '], 'Unassigned')
@@ -41,6 +42,7 @@ def load_data():
         
     return df
 
+# --- MAIN APP LOGIC ---
 try:
     df = load_data()
     
@@ -49,6 +51,7 @@ try:
     this_year = datetime.now().year
 
     st.title("📊 Karibu Operations Dashboard")
+    st.markdown(f"**Refresh Date:** {datetime.now().strftime('%d %b %Y | %H:%M')}")
 
     # --- KPI METRICS ---
     new_today = df[df['Date'].dt.date == today]
@@ -68,10 +71,9 @@ try:
     col_left, col_right = st.columns(2)
     with col_left:
         st.subheader("📋 Overall Work Status")
-        if 'Status' in df.columns:
-            status_count = df['Status'].value_counts().reset_index()
-            fig_pie = px.pie(status_count, values='count', names='Status', hole=0.5)
-            st.plotly_chart(fig_pie, use_container_width=True)
+        status_count = df['Status'].value_counts().reset_index()
+        fig_pie = px.pie(status_count, values='count', names='Status', hole=0.5)
+        st.plotly_chart(fig_pie, use_container_width=True)
 
     with col_right:
         st.subheader("📅 Monthly Completion Goal")
@@ -79,55 +81,49 @@ try:
         monthly_comp = len(month_df[month_df['Status_Lower'] == 'completed'])
         target = 100 
         progress_val = min(monthly_comp / target, 1.0)
-        st.write(f"Completed: **{monthly_comp}**")
+        st.write(f"Completed this month: **{monthly_comp}**")
         st.progress(progress_val)
         
-        # KPI: Unassigned Alert
-        unassigned_count = len(df[df['Staff_Lower'].isin(['nan', 'unassigned', '','none'])])
+        unassigned_count = len(df[df['Staff_Lower'].isin(['nan', 'unassigned', '', 'none'])])
         if unassigned_count > 0:
             st.warning(f"⚠️ {unassigned_count} tasks are currently unassigned.")
 
     st.divider()
 
-# --- UPDATED YTD ANALYSIS SECTION ---
-st.subheader("📈 Year-To-Date (YTD) Activity")
-completed_ytd = df[(df['Date'].dt.year == this_year) & (df['Status_Lower'] == 'completed')]
+    # --- YTD ANALYSIS ---
+    st.subheader("📈 Year-To-Date (YTD) Activity")
+    completed_ytd = df[(df['Date'].dt.year == this_year) & (df['Status_Lower'] == 'completed')]
 
-if not completed_ytd.empty:
-    st.write("**Category & Subcategory Volume (Completed Work)**")
-    
-    # We ensure there are no duplicate "Parent/Child" names which also causes errors
-    # If Category is same as Subcategory, we tweak it slightly for the chart
-    plot_df = completed_ytd.copy()
-    plot_df.loc[plot_df['Category'] == plot_df['Subcategory'], 'Subcategory'] = plot_df['Subcategory'] + " "
-    
-    try:
-        fig_tree = px.treemap(
-            plot_df, 
-            path=[px.Constant("All Work"), 'Category', 'Subcategory'], # Added root 'All Work' for stability
-            color='Category',
-            title="Completed Categories Hierarchy"
-        )
-        st.plotly_chart(fig_tree, use_container_width=True)
-    except Exception as tree_err:
-        st.warning(f"Treemap could not render: {tree_err}. Showing simple bar chart instead.")
-        st.bar_chart(completed_ytd['Category'].value_counts())
-else:
-    st.info("No completed data for YTD.")
+    if not completed_ytd.empty:
+        plot_df = completed_ytd.copy()
+        # Prevent Parent/Child name collision
+        plot_df.loc[plot_df['Category'] == plot_df['Subcategory'], 'Subcategory'] = plot_df['Subcategory'] + " "
+        
+        try:
+            fig_tree = px.treemap(
+                plot_df, 
+                path=[px.Constant("All Work"), 'Category', 'Subcategory'],
+                color='Category',
+                title="Completed Categories Hierarchy (YTD)"
+            )
+            st.plotly_chart(fig_tree, use_container_width=True)
+        except Exception as tree_err:
+            st.warning("Switching to bar chart due to data structure issues.")
+            st.bar_chart(completed_ytd['Category'].value_counts())
+    else:
+        st.info("No completed data for YTD.")
 
     # --- STAFF PERFORMANCE ---
     st.divider()
     st.subheader("👤 Staff Leaderboard (Monthly)")
     if not month_df.empty:
-        # Count completions by staff
         staff_perf = month_df[month_df['Status_Lower'] == 'completed']['Staff_Display'].value_counts().reset_index()
         if not staff_perf.empty:
             fig_staff = px.bar(staff_perf, x='Staff_Display', y='count', 
-                               labels={'Staff_Display': 'Employee', 'count': 'Tasks Completed'},
                                color='count', color_continuous_scale='Greens')
             st.plotly_chart(fig_staff, use_container_width=True)
         else:
-            st.write("No completions recorded by staff this month.")
+            st.write("No completions by staff this month.")
 
 except Exception as e:
-    st.error(f"Dashboard Error: {e}")
+    st.error(f"Critical Error: {e}")
