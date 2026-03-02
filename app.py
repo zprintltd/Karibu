@@ -6,10 +6,17 @@ from datetime import datetime
 # Set page configuration
 st.set_page_config(page_title="Karibu Task Manager", layout="wide")
 
-# 1. Establish Connection
+# 1. Define the Category System
+CATEGORIES = {
+    "PVC": ["CLEAR", "PRC", "UV"],
+    "EMB": ["STD"],
+    "CUS": ["CUS"]
+}
+
+# 2. Establish Connection
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# 2. Pull URL from Secrets
+# 3. Pull URL from Secrets
 try:
     SHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet_url"]
 except Exception:
@@ -20,7 +27,6 @@ def load_wo_data():
     data = conn.read(spreadsheet=SHEET_URL, worksheet="WO_Log", ttl=0)
     data.columns = [str(c).strip() for c in data.columns]
     if 'WO Number' in data.columns:
-        # Keep internal WO Number as string for matching
         data['WO Number'] = data['WO Number'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip().str.upper()
     return data
 
@@ -44,18 +50,23 @@ try:
     with st.expander("➕ Create New Work Order", expanded=False):
         with st.form("new_wo_form", clear_on_submit=True):
             col1, col2 = st.columns(2)
-            f_client = col1.text_input("Client Name")
-            f_phone = col2.text_input("Phone Number")
+            f_client = col1.text_input("Client Name").strip()
+            f_phone = col2.text_input("Phone Number").strip()
             
+            # Dependent Dropdowns for Category/Subcategory
             col3, col4, col5 = st.columns(3)
-            f_cat = col3.text_input("Category (e.g., PLUMBING)")
-            f_sub = col4.text_input("Subcategory")
-            f_ver = col5.text_input("Version", value="V0")
+            # We use a placeholder to ensure a selection is made
+            f_cat = col3.selectbox("Category", options=[""] + list(CATEGORIES.keys()))
             
-            f_desc = st.text_area("Description")
+            # Logic for Subcategory list based on Category choice
+            sub_options = CATEGORIES.get(f_cat, []) if f_cat else []
+            f_sub = col4.selectbox("Subcategory", options=sub_options)
+            
+            f_ver = col5.text_input("Version", value="V0")
+            f_desc = st.text_area("Description").strip()
             
             if st.form_submit_button("Generate & Save Work Order"):
-                if f_client and f_cat:
+                if f_client and f_cat and f_sub:
                     # Calculate Next WO Number
                     try:
                         last_wo = pd.to_numeric(df['WO Number'], errors='coerce').max()
@@ -63,25 +74,24 @@ try:
                     except:
                         new_wo_num = 1
                     
-                    # Formatting Date per your script logic (DDMMYY)
+                    # Date Formatting (ISO for data, Short for filename)
                     now = datetime.now()
                     iso_date = now.strftime("%Y-%m-%d")
                     short_date = now.strftime("%d%m%y")
                     
-                    # Generate Filename (All Caps)
-                    # Format: WO001_DDMMYY_CAT-SUB_CLIENT_DESC_V0
+                    # Generate Filename (All Caps, underscores instead of spaces)
                     filename = (
                         f"WO{str(new_wo_num).zfill(3)}_{short_date}_"
                         f"{f_cat}-{f_sub}_{f_client}_{f_desc}_{f_ver}"
-                    ).upper().replace(" ", "_") # Cleanup spaces for filename
+                    ).upper().replace(" ", "_")
                     
-                    # Prepare New Row (Matching your Google Sheet column order)
+                    # Prepare New Row
                     new_row = pd.DataFrame([{
                         "WO Number": str(new_wo_num),
                         "Date": iso_date,
-                        "Category": f_cat.upper(),
-                        "Subcategory": f_sub.upper(),
-                        "Client_Name_Display": f_client.upper(), # Adjust column name if needed
+                        "Category": f_cat,
+                        "Subcategory": f_sub,
+                        "Client_Name_Display": f_client.upper(),
                         "Client Phone": f_phone,
                         "Description": f_desc.upper(),
                         "Version": f_ver.upper(),
@@ -98,7 +108,7 @@ try:
                     st.success(f"Created WO #{new_wo_num} | Filename: {filename}")
                     st.rerun()
                 else:
-                    st.warning("Please fill in at least Client and Category.")
+                    st.error("Please provide Client, Category, and Subcategory.")
 
     # --- SECTION 2: SEARCH & EDIT ---
     st.subheader("🔍 Search & Update")
@@ -145,7 +155,8 @@ try:
     # --- SECTION 3: ACTIVE TASKS TABLE ---
     st.divider()
     st.subheader("🚀 Active Tasks")
-    # Filters
+    
+    # Filters: Only show incomplete and unassigned
     active_mask = (
         (df['Status'].str.lower().isin(['pending', 'in progress'])) |
         (df['Assigned To'].str.lower().isin(['nan', 'unassigned', '']))
