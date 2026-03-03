@@ -96,17 +96,34 @@ try:
 
     if not completed_ytd.empty:
         plot_df = completed_ytd.copy()
+        
         # Prevent Parent/Child name collision
         plot_df.loc[plot_df['Category'] == plot_df['Subcategory'], 'Subcategory'] = plot_df['Subcategory'] + " "
         
+        # Group data to get counts for the labels
+        # This ensures Plotly has the "values" it needs to display text
         try:
             fig_tree = px.treemap(
                 plot_df, 
                 path=[px.Constant("All Work"), 'Category', 'Subcategory'],
                 color='Category',
-                title="Completed Categories Hierarchy (YTD)"
+                title="Completed Categories Hierarchy (YTD)",
+                color_discrete_sequence=px.colors.qualitative.Pastel
             )
+
+            # --- CUSTOMIZATION FOR DATA LABELS ---
+            # 'label+value' shows the name and the count inside the box
+            fig_tree.update_traces(
+                textinfo="label+value",
+                texttemplate="<b>%{label}</b><br>Count: %{value}",
+                hovertemplate="<b>%{label}</b><br>Total: %{value}<br>Parent: %{parent}"
+            )
+            
+            # Adjust layout for better readability
+            fig_tree.update_layout(margin=dict(t=50, l=10, r=10, b=10))
+            
             st.plotly_chart(fig_tree, use_container_width=True)
+            
         except Exception as tree_err:
             st.warning("Switching to bar chart due to data structure issues.")
             st.bar_chart(completed_ytd['Category'].value_counts())
