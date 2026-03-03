@@ -109,19 +109,20 @@ try:
                 color_discrete_sequence=px.colors.qualitative.Pastel
             )
 
-            # --- CUSTOMIZATION FOR CLEAN LABELS & LARGE FONT ---
+            # --- CLEAN LABELS & EXTRA LARGE FONT ---
+            # IMPORTANT: No spaces between % and {
             fig_tree.update_traces(
                 textinfo="label+value",
-                # Removed 'Count:' text, wrapped in span for specific font sizing
-                texttemplate="<span style='font-size:24px'><b>% {label}</b></span><br><span style='font-size:20px'>% {value}</span>",
+                texttemplate="<span style='font-size:30px'><b>%{label}</b></span><br><span style='font-size:26px'>%{value}</span>",
                 hovertemplate="<b>%{label}</b><br>Total: %{value}",
                 textposition="middle center"
             )
             
-            # Uniformtext ensures that text is legible and doesn't shrink too much in small boxes
+            # Layout adjustments for visibility
             fig_tree.update_layout(
                 margin=dict(t=50, l=10, r=10, b=10),
-                uniformtext=dict(minsize=14, mode='hide') # Hides text only if it absolutely cannot fit at 14pt
+                # uniformtext forces the font to stay large and not shrink for small boxes
+                uniformtext=dict(minsize=18, mode='hide') 
             )
             
             st.plotly_chart(fig_tree, use_container_width=True)
