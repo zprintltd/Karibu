@@ -100,8 +100,6 @@ try:
         # Prevent Parent/Child name collision
         plot_df.loc[plot_df['Category'] == plot_df['Subcategory'], 'Subcategory'] = plot_df['Subcategory'] + " "
         
-        # Group data to get counts for the labels
-        # This ensures Plotly has the "values" it needs to display text
         try:
             fig_tree = px.treemap(
                 plot_df, 
@@ -111,16 +109,20 @@ try:
                 color_discrete_sequence=px.colors.qualitative.Pastel
             )
 
-            # --- CUSTOMIZATION FOR DATA LABELS ---
-            # 'label+value' shows the name and the count inside the box
+            # --- CUSTOMIZATION FOR CLEAN LABELS & LARGE FONT ---
             fig_tree.update_traces(
                 textinfo="label+value",
-                texttemplate="<b>%{label}</b><br>Count: %{value}",
-                hovertemplate="<b>%{label}</b><br>Total: %{value}<br>Parent: %{parent}"
+                # Removed 'Count:' text, wrapped in span for specific font sizing
+                texttemplate="<span style='font-size:24px'><b>% {label}</b></span><br><span style='font-size:20px'>% {value}</span>",
+                hovertemplate="<b>%{label}</b><br>Total: %{value}",
+                textposition="middle center"
             )
             
-            # Adjust layout for better readability
-            fig_tree.update_layout(margin=dict(t=50, l=10, r=10, b=10))
+            # Uniformtext ensures that text is legible and doesn't shrink too much in small boxes
+            fig_tree.update_layout(
+                margin=dict(t=50, l=10, r=10, b=10),
+                uniformtext=dict(minsize=14, mode='hide') # Hides text only if it absolutely cannot fit at 14pt
+            )
             
             st.plotly_chart(fig_tree, use_container_width=True)
             
