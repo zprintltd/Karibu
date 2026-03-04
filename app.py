@@ -171,13 +171,13 @@ try:
     search_query = st.text_input("Search by WO Number").strip().upper()
 
     if search_query and not df_wo.empty:
+        # Using the WO_SEARCH column created at the top of the script
         match = df_wo[df_wo['WO_SEARCH'] == search_query]
         if not match.empty:
             row = match.iloc[0]
             idx = match.index[0]
             with st.container(border=True):
                 st.write(f"### Editing WO #{search_query}")
-                st.caption(f"**Filename:** {row.get('Full Filename', 'N/A')}")
                 
                 e_col1, e_col2 = st.columns(2)
                 status_list = ["Pending", "In progress", "Completed", "On Hold", "Cancelled"]
@@ -188,7 +188,7 @@ try:
                     s_idx = 0
                 new_status = e_col1.selectbox("Status", status_list, index=s_idx)
 
-                # User list
+                # Prep user list
                 users = []
                 if not df_users.empty:
                     u_cols = [c.strip().lower() for c in df_users.columns]
@@ -198,7 +198,7 @@ try:
                 
                 drop_opts = sorted(list(set(["Admin", "Unassigned"] + users)))
                 curr_a = str(row['Assigned To']).strip()
-                if curr_a not in drop_opts and curr_a.lower() != 'nan' and curr_a != "":
+                if curr_a not in drop_opts and curr_a != "":
                     drop_opts.append(curr_a)
                 try:
                     a_idx = drop_opts.index(curr_a)
@@ -210,44 +210,40 @@ try:
                     df_wo.at[idx, 'Status'] = new_status
                     df_wo.at[idx, 'Assigned To'] = new_assignee
                     
+                    # Clean up temp search column before saving
                     if 'WO_SEARCH' in df_wo.columns:
-                        df_wo = df_wo.drop(columns=['WO_SEARCH'])
+                        temp_df = df_wo.drop(columns=['WO_SEARCH'])
+                    else:
+                        temp_df = df_wo
                         
-                    conn.update(spreadsheet=SHEET_URL, worksheet="WO_Log", data=df_wo)
+                    conn.update(spreadsheet=SHEET_URL, worksheet="WO_Log", data=temp_df)
                     st.success("Updated!")
                     st.rerun()
 
-    # --- UPDATED SECTION: ACTIVE TASKS / OPERATOR PANEL ---
+    # --- SECTION 3: ACTIVE TASKS (FIXED) ---
     st.divider()
     st.subheader("🚀 Active Tasks")
 
-if not df_wo.empty:
-    # 1. Standardize column names (removes hidden spaces)
-    df_wo.columns = [str(c).strip() for c in df_wo.columns]
-    
-    # 2. Find the correct column for "Assigned To Name"
-    # This looks for any header that contains "Assigned" or "Name"
-    staff_col = next((c for c in df_wo.columns if 'Assigned' in c or 'Name' in c and c != 'Client Name'), "Assigned To Name")
+    if not df_wo.empty:
+        # Standardize headers to handle hidden spaces in Google Sheets
+        df_wo.columns = [str(c).strip() for c in df_wo.columns]
+        
+        # Identify the Staff/Operator column dynamically
+        staff_col = next((c for c in df_wo.columns if 'Assigned' in c), "Assigned To")
+        
+        # Prepare display dataframe
+        df_wo['Status'] = df_wo['Status'].astype(str)
+        active_mask = (df_wo['Status'].str.lower().isin(['pending', 'in progress']))
+        final_view = df_wo[active_mask].copy()
 
-    # 3. Prepare display dataframe
-    df_wo['Status'] = df_wo['Status'].astype(str)
-    
-    # Filter for active tasks
-    active_mask = (df_wo['Status'].str.lower().isin(['pending', 'in progress']))
-    final_view = df_wo[active_mask].copy()
+        # Display specific columns including the one that was showing empty
+        cols_to_show = ['WO Number', 'Date', 'Category', 'Subcategory', 'Full Filename', staff_col, 'Status']
+        existing_cols = [c for c in cols_to_show if c in final_view.columns]
 
-    # 4. Ensure the column is rendered correctly
-    # Select specific columns to show, using the dynamically found staff_col
-    cols_to_show = ['WO Number', 'Date', 'Category', 'Subcategory', 'Full Filename', staff_col, 'Status']
-    
-    # Only use columns that actually exist to prevent errors
-    existing_cols = [c for c in cols_to_show if c in final_view.columns]
+        if not final_view.empty:
+            st.dataframe(final_view[existing_cols], use_container_width=True, hide_index=True)
+        else:
+            st.info("No active tasks found.")
 
-    if not final_view.empty:
-        st.dataframe(
-            final_view[existing_cols], 
-            use_container_width=True, 
-            hide_index=True
-        )
-    else:
-        st.info("No active tasks found.")
+except Exception as e:
+    st.error(f"Application Error: {e}")
