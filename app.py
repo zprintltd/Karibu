@@ -2,7 +2,37 @@
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
+import plotly.express as px
 from datetime import datetime
+
+# --- ACCESS CONTROL FUNCTION ---
+def check_password():
+    """Returns True if the user had the correct password."""
+    if st.session_state.get("password_correct", False):
+        return True
+
+    st.title("🔐 Karibu Private Access")
+    
+    # User input for password
+    password_input = st.text_input("Enter Access Password", type="password")
+    
+    if st.button("Login"):
+        if password_input == st.secrets.get("APP_PASSWORD", "mbuyu$1800"): # Fallback if secret is missing
+            st.session_state["password_correct"] = True
+            st.rerun()
+        else:
+            st.error("🚫 Password incorrect")
+            
+    return False
+
+# MUST be the first thing checked
+if not check_password():
+    st.stop()
+
+# --- THE REST OF YOUR APP CODE STARTS HERE ---
+# (Page Config, Connections, load_data, etc.)
+st.set_page_config(page_title="Karibu Dashboard", layout="wide")
+# ...
 
 # Set page configuration
 st.set_page_config(page_title="Karibu Task Manager", layout="wide")
