@@ -218,8 +218,8 @@ try:
                     st.rerun()
 
     # --- UPDATED SECTION: ACTIVE TASKS / OPERATOR PANEL ---
-st.divider()
-st.subheader("🚀 Active Tasks")
+    st.divider()
+    st.subheader("🚀 Active Tasks")
 
 if not df_wo.empty:
     # 1. Standardize column names (removes hidden spaces)
