@@ -16,7 +16,7 @@ def check_password():
     password_input = st.text_input("Enter Access Password", type="password")
     
     if st.button("Login"):
-        if password_input == st.secrets.get("APP_PASSWORD", "Admin123"): # Fallback if secret is missing
+        if password_input == st.secrets.get("APP_PASSWORD", "VumaWimbi2000$"): # Fallback if secret is missing
             st.session_state["password_correct"] = True
             st.rerun()
         else:
