@@ -35,6 +35,8 @@ def check_password():
 
 if not check_password():
     st.stop()  # Do not run the rest of the app if not authenticated
+
+# OLD 
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
