@@ -220,25 +220,44 @@ try:
                     st.success("Updated!")
                     st.rerun()
 
-    # --- SECTION 3: ACTIVE TASKS (FIXED) ---
+    # --- SECTION 3: ACTIVE TASKS (WITH NAME MAPPING) ---
     st.divider()
     st.subheader("🚀 Active Tasks")
 
     if not df_wo.empty:
-        # Standardize headers to handle hidden spaces in Google Sheets
+        # 1. Standardize headers
         df_wo.columns = [str(c).strip() for c in df_wo.columns]
         
-        # Identify the Staff/Operator column dynamically
+        # 2. Create a Name Mapping Dictionary from your 'users' tab
+        # This maps Email (Col A) -> Name (Col B)
+        name_map = {}
+        if not df_users.empty:
+            # Ensure we use the correct column names from your users sheet
+            u_cols = df_users.columns.tolist()
+            # Assuming Col A is 0 and Col B is 1
+            email_col = u_cols[0] 
+            name_col = u_cols[1]
+            name_map = dict(zip(df_users[email_col].astype(str).str.strip().str.lower(), 
+                                df_users[name_col].astype(str).str.strip()))
+
+        # 3. Find the Staff column and replace emails with names
         staff_col = next((c for c in df_wo.columns if 'Assigned' in c), "Assigned To")
         
-        # Prepare display dataframe
+        # Apply the mapping: If the value is an email in our map, use the Name. 
+        # Otherwise, keep the original value.
+        df_wo['Display_Staff'] = df_wo[staff_col].astype(str).str.strip().str.lower().map(name_map).fillna(df_wo[staff_col])
+
+        # 4. Prepare display dataframe
         df_wo['Status'] = df_wo['Status'].astype(str)
         active_mask = (df_wo['Status'].str.lower().isin(['pending', 'in progress']))
         final_view = df_wo[active_mask].copy()
 
-        # Display specific columns including the one that was showing empty
-        cols_to_show = ['WO Number', 'Date', 'Category', 'Subcategory', 'Full Filename', staff_col, 'Status']
-        existing_cols = [c for c in cols_to_show if c in final_view.columns]
+        # 5. Define columns to show (using our new Display_Staff column)
+        cols_to_show = ['WO Number', 'Date', 'Category', 'Subcategory', 'Full Filename', 'Display_Staff', 'Status']
+        
+        # Rename 'Display_Staff' back to 'Assigned To' for the UI
+        final_view = final_view.rename(columns={'Display_Staff': 'Assigned Operator'})
+        existing_cols = [c for c in ['WO Number', 'Date', 'Category', 'Subcategory', 'Full Filename', 'Assigned Operator', 'Status'] if c in final_view.columns]
 
         if not final_view.empty:
             st.dataframe(final_view[existing_cols], use_container_width=True, hide_index=True)
