@@ -217,23 +217,37 @@ try:
                     st.success("Updated!")
                     st.rerun()
 
-    # --- SECTION 3: ACTIVE TASKS ---
-    st.divider()
-    st.subheader("🚀 Active Tasks")
-    if not df_wo.empty:
-        df_wo['Status'] = df_wo['Status'].astype(str)
-        df_wo['Assigned To'] = df_wo['Assigned To'].astype(str)
+    # --- UPDATED SECTION: ACTIVE TASKS / OPERATOR PANEL ---
+st.divider()
+st.subheader("🚀 Active Tasks")
 
-        active_mask = (df_wo['Status'].str.lower().isin(['pending', 'in progress'])) | \
-                      (df_wo['Assigned To'].str.lower().isin(['nan', 'unassigned', '']))
-        
-        final_view = df_wo[active_mask]
-        final_view = final_view[~final_view['Status'].str.lower().isin(['completed', 'cancelled'])]
+if not df_wo.empty:
+    # 1. Standardize column names (removes hidden spaces)
+    df_wo.columns = [str(c).strip() for c in df_wo.columns]
+    
+    # 2. Find the correct column for "Assigned To Name"
+    # This looks for any header that contains "Assigned" or "Name"
+    staff_col = next((c for c in df_wo.columns if 'Assigned' in c or 'Name' in c and c != 'Client Name'), "Assigned To Name")
 
-        if not final_view.empty:
-            st.dataframe(final_view[['WO Number', 'Date', 'Client_Name_Display', 'Status', 'Assigned To']], use_container_width=True, hide_index=True)
-        else:
-            st.info("No active tasks.")
+    # 3. Prepare display dataframe
+    df_wo['Status'] = df_wo['Status'].astype(str)
+    
+    # Filter for active tasks
+    active_mask = (df_wo['Status'].str.lower().isin(['pending', 'in progress']))
+    final_view = df_wo[active_mask].copy()
 
-except Exception as e:
-    st.error(f"Application Error: {e}")
+    # 4. Ensure the column is rendered correctly
+    # Select specific columns to show, using the dynamically found staff_col
+    cols_to_show = ['WO Number', 'Date', 'Category', 'Subcategory', 'Full Filename', staff_col, 'Status']
+    
+    # Only use columns that actually exist to prevent errors
+    existing_cols = [c for c in cols_to_show if c in final_view.columns]
+
+    if not final_view.empty:
+        st.dataframe(
+            final_view[existing_cols], 
+            use_container_width=True, 
+            hide_index=True
+        )
+    else:
+        st.info("No active tasks found.")
