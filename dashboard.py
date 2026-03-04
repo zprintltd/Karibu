@@ -1,47 +1,38 @@
-def check_password():
-    """Returns True if the user had the correct password."""
-
-    def password_entered():
-        """Checks whether a password entered by the user is correct."""
-        # You can hardcode a master password or check against your 'users' sheet
-        if st.session_state["password"] == st.secrets["APP_PASSWORD"]:
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]  # don't store password
-        else:
-            st.session_state["password_correct"] = False
-
-    if "password_correct" not in st.session_state:
-        # First run, show input for password
-        st.text_input(
-            "Please enter the Karibu Access Password", 
-            type="password", 
-            on_change=password_entered, 
-            key="password"
-        )
-        return False
-    elif not st.session_state["password_correct"]:
-        # Password incorrect, show input + error
-        st.text_input(
-            "Please enter the Karibu Access Password", 
-            type="password", 
-            on_change=password_entered, 
-            key="password"
-        )
-        st.error("😕 Password incorrect")
-        return False
-    else:
-        # Password correct.
-        return True
-
-if not check_password():
-    st.stop()  # Do not run the rest of the app if not authenticated
-
-# OLD 
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
+
+# --- ACCESS CONTROL FUNCTION ---
+def check_password():
+    """Returns True if the user had the correct password."""
+    if st.session_state.get("password_correct", False):
+        return True
+
+    st.title("🔐 Karibu Private Access")
+    
+    # User input for password
+    password_input = st.text_input("Enter Access Password", type="password")
+    
+    if st.button("Login"):
+        if password_input == st.secrets.get("APP_PASSWORD", "Admin123"): # Fallback if secret is missing
+            st.session_state["password_correct"] = True
+            st.rerun()
+        else:
+            st.error("🚫 Password incorrect")
+            
+    return False
+
+# MUST be the first thing checked
+if not check_password():
+    st.stop()
+
+# --- THE REST OF YOUR APP CODE STARTS HERE ---
+# (Page Config, Connections, load_data, etc.)
+st.set_page_config(page_title="Karibu Dashboard", layout="wide")
+# ...
+
 
 # 1. Page Config
 st.set_page_config(page_title="Karibu Performance Dashboard", layout="wide")
